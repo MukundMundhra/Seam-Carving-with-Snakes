@@ -14,6 +14,8 @@ from scipy.ndimage.filters import convolve
 import cv2
 from skimage.segmentation import active_contour
 from functools import cmp_to_key
+from snakes import fit_snake
+from scipy.ndimage import gaussian_filter
 
 def calc_energy(img):
     filter_du = np.array([
@@ -39,6 +41,24 @@ def calc_energy(img):
 
     # We sum the energies in the red, green, and blue channels
     energy_map = convolved.sum(axis=2)
+
+    return energy_map
+
+def grayscale_calc_energy(img):
+    
+    filter_du = np.array([
+        [1.0, 2.0, 1.0],
+        [0.0, 0.0, 0.0],
+        [-1.0, -2.0, -1.0],
+    ])
+ 
+    filter_dv = np.array([
+        [1.0, 0.0, -1.0],
+        [2.0, 0.0, -2.0],
+        [1.0, 0.0, -1.0],
+    ])
+    img = img.astype('float32')
+    convolved = np.absolute(convolve(img, filter_du)) + np.absolute(convolve(img, filter_dv))
 
     return energy_map
 
@@ -115,6 +135,16 @@ def get_mask_from_snake(snake, shape):
 
     return snake_mask, np.array(snake_new)
 
+def snakes_plane(image, pts):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    energy = gaussian_filter(calc_energy(image), sigma=5)
+    snake_pts = fit_snake(pts, energy, nits=60, alpha=0.5, beta=0.2, gamma=1, point_plot=None)
+
+    energyim = cv2.normalize(energy, None, 0, 255, cv2.NORM_MINMAX)
+    cv2.imshow('energy', energyim.astype(np.uint8))
+
+    return snake_pts
+
 def snake(mask, image):
     int_mask = (~mask).astype(int)
     r,c = np.nonzero(int_mask)
@@ -123,9 +153,11 @@ def snake(mask, image):
     img2 = image.copy()
     img2[r,c] *= 0
     cv2.imshow('mask',img2)
-    cv2.waitKey(1)
+    cv2.waitKey(10)
 
-    snake = active_contour(image, init, bc='fixed', alpha=0.005, beta=5, w_edge=-5, gamma=0.01, max_px_move=2)
+    # snake = active_contour(image, init, bc='fixed', alpha=0.005, beta=8, w_edge=-0.01, gamma=0.01, max_px_move=2)
+
+    snake = snakes_plane(image, init)
 
     np.clip(snake[:,0], 0, image.shape[0]-1, out=snake[:,0])
     np.clip(snake[:,1], 0, image.shape[1]-1, out=snake[:,1])
@@ -157,7 +189,7 @@ def snake(mask, image):
     img3 = image.copy()
     img3[snake_new[:,0], snake_new[:,1]] *= 0
     cv2.imshow('snake',img3)
-    cv2.waitKey(1)
+    cv2.waitKey(10)
 
     # print(snake_mask)
     # print(snake_mask.shape)
@@ -224,8 +256,8 @@ def main():
     in_filename = sys.argv[3]
     out_filename = sys.argv[4]
 
-    img = imread(in_filename)
-    # img = cv2.resize(img,None,fx=0.75,fy=0.75)
+    img = cv2.imread(in_filename)
+    # img = cv2.resize(img,None,fx=0.4,fy=0.4)
 
     if which_axis == 'r':
         out = crop_r(img, scale)
@@ -235,7 +267,7 @@ def main():
         print('usage: carver.py <r/c> <scale> <image_in> <image_out>', file=sys.stderr)
         sys.exit(1)
     
-    imwrite(out_filename, out)
+    cv2.imwrite(out_filename, out)
 
 if __name__ == '__main__':
     main()
