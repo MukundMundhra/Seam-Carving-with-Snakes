@@ -135,13 +135,23 @@ def get_mask_from_snake(snake, shape):
 
     return snake_mask, np.array(snake_new)
 
+def increase_no_of_pts(pts):
+    pts = pts.astype(np.float32)
+    diffs = np.diff(pts, axis=0)
+    extra_pts = pts[:-1] + (diffs/2)
+    p = np.hstack((pts[:-1],extra_pts)).ravel()
+    q = p.reshape((int(len(p)/2),2))
+    new_pts = np.append(q, [pts[-1]], axis=0)
+
+    return new_pts
+
 def snakes_plane(image, pts):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     energy = gaussian_filter(calc_energy(image), sigma=5)
     snake_pts = fit_snake(pts, energy, nits=60, alpha=0.5, beta=0.2, gamma=1, point_plot=None)
 
     energyim = cv2.normalize(energy, None, 0, 255, cv2.NORM_MINMAX)
-    cv2.imshow('energy', energyim.astype(np.uint8))
+    # cv2.imshow('energy', energyim.astype(np.uint8))
 
     return snake_pts
 
@@ -152,8 +162,8 @@ def snake(mask, image):
 
     img2 = image.copy()
     img2[r,c] *= 0
-    cv2.imshow('mask',img2)
-    cv2.waitKey(10)
+    # cv2.imshow('mask',img2)
+    # cv2.waitKey(10)
 
     # snake = active_contour(image, init, bc='fixed', alpha=0.005, beta=8, w_edge=-0.01, gamma=0.01, max_px_move=2)
 
@@ -187,7 +197,8 @@ def snake(mask, image):
     # print(snake_new)
     
     img3 = image.copy()
-    img3[snake_new[:,0], snake_new[:,1]] *= 0
+    img3[r,c] = [255,255,255]   ## DP points
+    img3[snake_new[:,0], snake_new[:,1]] *= 0   ## Snake points
     cv2.imshow('snake',img3)
     cv2.waitKey(10)
 
@@ -248,7 +259,7 @@ def minimum_seam(img):
 
 def main():
     if len(sys.argv) != 5:
-        print('usage: carver.py <r/c> <scale> <image_in> <image_out>', file=sys.stderr)
+        print('usage: snakes_seams.py <r/c> <scale> <image_in> <image_out>', file=sys.stderr)
         sys.exit(1)
 
     which_axis = sys.argv[1]
@@ -257,7 +268,7 @@ def main():
     out_filename = sys.argv[4]
 
     img = cv2.imread(in_filename)
-    # img = cv2.resize(img,None,fx=0.4,fy=0.4)
+    # img = cv2.resize(img,None,fx=0.6,fy=0.6)
 
     if which_axis == 'r':
         out = crop_r(img, scale)
