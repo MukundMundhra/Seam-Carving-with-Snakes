@@ -16,6 +16,7 @@ from skimage.segmentation import active_contour
 from functools import cmp_to_key
 from snakes import fit_snake
 from scipy.ndimage import gaussian_filter
+from scipy.ndimage.interpolation import map_coordinates
 
 def calc_energy(img):
     filter_du = np.array([
@@ -61,6 +62,15 @@ def grayscale_calc_energy(img):
     convolved = np.absolute(convolve(img, filter_du)) + np.absolute(convolve(img, filter_dv))
 
     return energy_map
+
+def compare_energies(energy_map, dp_pts, snake_pts):
+
+    e_dp = map_coordinates(energy_map, [dp_pts[:,0], dp_pts[:,1]], order=1)
+    e_snake = map_coordinates(energy_map, [snake_pts[:,0], snake_pts[:,1]], order=1)
+
+    print("DP energy: ", np.sum(e_dp))
+    print("Snake energy: ", np.sum(e_snake))
+
 
 def crop_c(img, scale_c):
     r, c, _ = img.shape
@@ -146,14 +156,15 @@ def increase_no_of_pts(pts):
     return new_pts
 
 def snakes_plane(image, pts):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    energy = gaussian_filter(calc_energy(image), sigma=5)
-    snake_pts = fit_snake(pts, energy, nits=60, alpha=0.5, beta=0.2, gamma=1, point_plot=None)
+    # gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    energy = gaussian_filter(calc_energy(image), sigma=2)
+    snake_pts = fit_snake(increase_no_of_pts(pts), energy, nits=60, alpha=0.2, beta=0.2, gamma=5, point_plot=None)
+    # snake_pts = fit_snake(increase_no_of_pts(pts), energy, nits=50, alpha=10.0, beta=0.1, gamma=5.0, point_plot=None)
 
     energyim = cv2.normalize(energy, None, 0, 255, cv2.NORM_MINMAX)
     # cv2.imshow('energy', energyim.astype(np.uint8))
 
-    return snake_pts
+    return snake_pts, energyim
 
 def snake(mask, image):
     int_mask = (~mask).astype(int)
@@ -167,38 +178,47 @@ def snake(mask, image):
 
     # snake = active_contour(image, init, bc='fixed', alpha=0.005, beta=8, w_edge=-0.01, gamma=0.01, max_px_move=2)
 
-    snake = snakes_plane(image, init)
+    snake, energy_image = snakes_plane(image, init)
 
     np.clip(snake[:,0], 0, image.shape[0]-1, out=snake[:,0])
     np.clip(snake[:,1], 0, image.shape[1]-1, out=snake[:,1])
 
-    # print(snake)
+    # # print(snake)
     snake_mask, snake_new = get_mask_from_snake(snake, mask.shape)
-    # print(snake_new)
-    # snake = np.round(snake).astype(int)
+    # # print(snake_new)
+    snake_original = np.round(snake).astype(int) ## From original float snake
 
-    if len(np.unique(snake_new, axis=0)) != image.shape[0]:
-        print(len(np.unique(snake_new, axis=0)))
+    # if len(np.unique(snake_new, axis=0)) != image.shape[0]:
+    #     print(len(np.unique(snake_new, axis=0)))
 
-    rows, row_counts = np.unique(snake_new[:,0], return_counts=True)
-    # cols, col_counts = np.unique(snake_new[:,1], return_counts=True)
-    if (len(rows[row_counts>1]) > 0):
-        print("here")
-        print(rows[row_counts>1])
-        print(row_counts[row_counts>1])
-        print(len(row_counts[row_counts>1]))
-        print(row_counts[row_counts>1].sum())
-        print(image.shape[0])
-        print(len(rows))
-        # print(cols[col_counts>1])
-        # print(col_counts[col_counts>1])
-        # cv2.waitKey(100)
+    # rows, row_counts = np.unique(snake_new[:,0], return_counts=True)
+    # # cols, col_counts = np.unique(snake_new[:,1], return_counts=True)
+    # if (len(rows[row_counts>1]) > 0):
+    #     print("here")
+    #     print(rows[row_counts>1])
+    #     print(row_counts[row_counts>1])
+    #     print(len(row_counts[row_counts>1]))
+    #     print(row_counts[row_counts>1].sum())
+    #     print(image.shape[0])
+    #     print(len(rows))
+    #     # print(cols[col_counts>1])
+    #     # print(col_counts[col_counts>1])
+    #     # cv2.waitKey(100)
 
     # print(snake_new)
     
+    compare_energies(energy_image, init, snake_new)
+
+    energy_colour = cv2.cvtColor(energy_image.astype(np.uint8), cv2.COLOR_GRAY2RGB)
+    energy_colour[snake_original[:,0], snake_original[:,1]] = [255, 0, 0]   ## Snake original from float points
+    energy_colour[r,c] = [0, 0, 255]     ## DP points
+    energy_colour[snake_new[:,0], snake_new[:,1]] = [0, 255, 0]   ## Snake points
+    cv2.imshow('energy',energy_colour)
+    cv2.waitKey(10)
+
     img3 = image.copy()
-    img3[r,c] = [255,255,255]   ## DP points
-    img3[snake_new[:,0], snake_new[:,1]] *= 0   ## Snake points
+    img3[r,c] = [255,255,255]   ## DP points white
+    img3[snake_new[:,0], snake_new[:,1]] *= 0   ## Snake points black
     cv2.imshow('snake',img3)
     cv2.waitKey(10)
 
